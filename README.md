@@ -1,170 +1,102 @@
-# z.py README
+# z.py
 
-`z.py` is a source/context archive certifier. It builds a ZIP archive
-and companion audit files for Codex handoffs, release context packages, and
-research-heavy Rust workspaces.
+`z.py` is a standalone source/context archive certifier. It creates a ZIP file
+plus audit sidecars that describe what was included, what was excluded, and
+which validation checks passed or failed.
 
-The script is intentionally single-file and Python-stdlib only. It is designed
-to make archive output inspectable before it leaves the machine: included files
-are hashed, excluded files are explained, required project surfaces are checked,
-and common self-containment failures are reported.
+It is a single Python file and uses only the standard library.
 
 ## Quick Start
 
-From the project root you want to package:
+Run it from the directory that contains `z.py`:
 
 ```bash
-python3 z.py --root . --profile aidens --mode next-codex-context
+python3 z.py --root /path/to/project
 ```
 
-For a strict dry run that emits reports without writing the ZIP:
+Create a package with an explicit output path:
 
 ```bash
-python3 z.py --root . --profile aidens --mode next-codex-context --dry-run
+python3 z.py --root /path/to/project --output project-context.zip
 ```
 
-For a full Codex-run handoff package:
+Run validation and write reports without creating the ZIP:
 
 ```bash
-python3 z.py --root . --profile aidens --mode codex-run-full
+python3 z.py --root /path/to/project --dry-run
 ```
 
-## Outputs
+Show the full CLI:
 
-Unless overridden, `z.py` writes these files beside the archive:
+```bash
+python3 z.py --help
+```
+
+## What It Writes
+
+By default, a run writes:
 
 - `<archive>.zip`
 - `<archive>.manifest.json`
 - `<archive>.report.md`
 - `<archive>.excluded.json`
 - `<archive>.findings.json`
-- `<archive>.codex-archive.json` when Codex-run archival normalization runs
 
-The generated Markdown report is the fastest human review surface. The manifest
-and findings JSON are the machine-readable audit surfaces.
+The Markdown report is the human review surface. The JSON files are for
+automation and audit trails.
 
-## Modes
+## Strict Mode
 
-Supported modes are:
-
-- `source-clean`
-- `release-context`
-- `next-codex-context`
-- `codex-context` legacy alias for `next-codex-context`
-- `codex-run-full`
-- `full-context` legacy alias for `codex-run-full`
-- `research-context`
-- `audit-full`
-
-Use `next-codex-context` for ordinary Codex handoff packages. Use
-`codex-run-full` only when the active run context itself should be packaged. Use
-`audit-full` when archived Codex-run history is intentionally part of the audit
-payload.
-
-## Profiles
-
-Supported profiles are:
-
-- `auto`
-- `aidens`
-- `libraries`
-- `recall`
-- `recall-coding`
-- `generic-rust`
-- `generic`
-- `research`
-
-`auto` infers the profile from the root. For reproducible handoffs, prefer
-passing the profile explicitly.
-
-## Validation Behavior
-
-`z.py` runs in strict mode by default. If validation errors are found, it exits
-with code `2` and does not write the ZIP. Sidecar reports are still written so
+Strict mode is enabled by default. If validation errors are found, `z.py` exits
+with code `2` and does not write the ZIP. It still writes the sidecar reports so
 the failure can be inspected.
 
-Use `--no-strict` only when producing a diagnostic package with known issues:
+Use `--no-strict` for a diagnostic package when you knowingly want output even
+with validation errors:
 
 ```bash
-python3 z.py --root . --profile aidens --mode next-codex-context --no-strict
+python3 z.py --root /path/to/project --no-strict
 ```
 
 Exit codes:
 
 - `0`: archive written or dry run completed
-- `2`: validation failed under strict mode
+- `2`: validation failed in strict mode
 - `1`: unexpected operational failure
 
-## Codex-Run Archive Hygiene
+## Common Options
 
-By default, `z.py` normalizes stale active Codex-run artifacts into
-`docs/codex-runs/archive/` before packaging. The current run defaults to `P23`
-and can be changed with:
+- `--profile <name>`: choose the project profile, or use `auto`
+- `--mode <name>`: choose the archive policy mode
+- `--include-external-path-deps`: include Cargo path dependencies outside root
+- `--no-include-external-path-deps`: keep the package under `--root`
+- `--include-doc-binaries` / `--exclude-doc-binaries`
+- `--include-images` / `--exclude-images`
+- `--include-logs` / `--exclude-logs`
+- `--follow-symlinks`: follow symlinks whose targets stay inside root
+- `--max-file-size-mb <number>`: cap included file size
+- `--compresslevel <0-9>`: set ZIP compression level
+- `--preserve-mtime`: preserve file mtimes instead of deterministic timestamps
 
-```bash
-python3 z.py --root . --codex-current-run P24
-```
+## Built-In Checks
 
-Useful archive-hygiene commands:
+When enabled, `z.py` checks for:
 
-```bash
-python3 z.py --root . --archive-only
-python3 z.py --root . --verify-codex-archive-hygiene
-python3 z.py --root . --include-codex-archive --mode audit-full
-```
+- missing expected project surfaces for the selected profile
+- Rust `include_str!` and `include_bytes!` references
+- Cargo path dependency self-containment
+- conservative shell script references to `.sh` and `.py` files
+- high-risk secret-like content in included text files
+- stale active Codex-run artifacts when archive hygiene checks are requested
 
-`--no-archive-codex-runs` is diagnostic only. In strict packaging, stale active
-Codex-run artifacts remain validation errors.
-
-## Inclusion Controls
-
-Common toggles:
-
-- `--include-external-path-deps` or `--no-include-external-path-deps`
-- `--include-generated-schemas` or `--exclude-generated-schemas`
-- `--include-codex-artifacts` or `--exclude-codex-artifacts`
-- `--include-doc-binaries` or `--exclude-doc-binaries`
-- `--include-images` or `--exclude-images`
-- `--include-logs` or `--exclude-logs`
-- `--follow-symlinks`
-- `--max-file-size-mb <number>`
-
-Secret-like filenames are excluded by default. Do not make
-`--allow-secret-like-names` the default; use it only for an explicit diagnostic
-run after reviewing the file list.
-
-## Reference Checks
-
-Enabled by default:
-
-- Rust `include_str!` and `include_bytes!` reference checks
-- Cargo path dependency self-containment checks
-- shell script references to `.sh` and `.py` files
-- high-risk secret-pattern content scanning
-
-Each check has a matching `--no-check-*` flag for diagnostic runs, but normal
-handoff packages should leave the checks enabled.
-
-## Determinism
-
-ZIP entry timestamps are deterministic by default. Use `--preserve-mtime` only
-when timestamp preservation is more important than byte-for-byte reproducibility.
-
-Compression defaults to level `9` and can be changed with:
-
-```bash
-python3 z.py --root . --compresslevel 6
-```
+Use the matching `--no-check-*` flags only for diagnostic runs.
 
 ## Review Checklist
 
-Before treating a package as a handoff artifact:
+Before using an archive as a handoff artifact:
 
 1. Read `<archive>.report.md`.
-2. Confirm validation findings are empty or explicitly accepted.
+2. Confirm there are no unexpected validation findings.
 3. Review `<archive>.excluded.json` for unexpected omissions.
-4. Confirm external Cargo path dependencies are included or intentionally
-   downgraded.
-5. Confirm Codex-run archive hygiene is clean for the intended current run.
-
-Use `python3 z.py --help` for the authoritative CLI option list.
+4. Confirm any external path dependencies are intentional.
+5. Keep the generated sidecars with the ZIP.
