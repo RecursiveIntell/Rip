@@ -4,7 +4,9 @@
 plus audit sidecars that describe what was included, what was excluded, and
 which validation checks passed or failed.
 
-It is a single Python file and uses only the standard library.
+It is a single Python file and uses only the standard library. A successful archive check covers the enabled archive rules; it does not certify that the packaged software works or that every secret was detected.
+
+Use Python 3.11+ to enable the standard-library TOML parser used for Cargo metadata checks. Older-Python fallback parsing is less complete.
 
 ## Quick Start
 
@@ -32,6 +34,14 @@ Show the full CLI:
 python3 z.py --help
 ```
 
+## Source-tree effects and scope
+
+Normal runs enable `--archive-codex-runs` by default. Before packaging, the script can move stale Codex-run files into `docs/codex-runs/archive`, remove active duplicates already preserved there, and write supersession/index records. Run on a clean working copy or inspect the planned changes with `--dry-run` first. Dry runs skip those moves but still write report sidecars.
+
+Use `--no-archive-codex-runs` when you want to disable that normalization. The selected profile/mode can also include external Cargo path dependencies, so inspect `include_roots` and use `--no-include-external-path-deps` when the intended boundary is only `--root`. Archive inclusion is not permission to share files with someone else.
+
+Relative `--output` paths are resolved under `--root`, not necessarily the shell's current directory.
+
 ## What It Writes
 
 By default, a run writes:
@@ -41,6 +51,7 @@ By default, a run writes:
 - `<archive>.report.md`
 - `<archive>.excluded.json`
 - `<archive>.findings.json`
+- a Codex archive-normalization report when that workflow is enabled
 
 The Markdown report is the human review surface. The JSON files are for
 automation and audit trails.
@@ -60,7 +71,7 @@ python3 z.py --root /path/to/project --no-strict
 
 Exit codes:
 
-- `0`: archive written or dry run completed
+- `0`: requested operation completed (including dry-run or archive-only modes; inspect the report for what was actually written)
 - `2`: validation failed in strict mode
 - `1`: unexpected operational failure
 
